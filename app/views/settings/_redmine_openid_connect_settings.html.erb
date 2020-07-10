@@ -44,3 +44,8 @@
   <label><%= t('config.disable_ssl_validation') %></label>
   <%= check_box_tag 'settings[disable_ssl_validation]', true, @settings['disable_ssl_validation'] %>
 </p>
+
+<p>
+  <label><%= t('config.email_domains') %></label>
+  <%= text_field_tag 'settings[email_domains]', @settings['email_domains'], :size => '60' %>
+</p>

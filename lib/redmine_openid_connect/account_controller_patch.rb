@@ -83,7 +83,7 @@ module RedmineOpenidConnect
         user_info = oic_session.get_user_info!
 
         # verify application authorization
-        unless oic_session.authorized?
+        unless oic_session.authorized? && valid_email?(user_info["email"])
           return invalid_credentials
         end
 
@@ -93,7 +93,7 @@ module RedmineOpenidConnect
         if user.nil?
           user = User.new
 
-          user.login = user_info["user_name"] || user_info["nickname"] || user_info["preferred_username"]
+          user.login = user_info["user_name"] || user_info["nickname"] || user_info["preferred_username"] || user_info["email"]
 
           firstname = user_info["given_name"]
           lastname = user_info["family_name"]
@@ -172,6 +172,14 @@ module RedmineOpenidConnect
             'session_state',
           ].include?(k)
         end
+      end
+    end
+
+    def valid_email?(email)
+      email_domains = Setting.plugin_redmine_openid_connect['email_domains']
+      return true if email_domains.empty?
+      return email_domains.split(',').any? do |domain|
+        email.end_with?("@" + domain)
       end
     end
   end # AccountControllerPatch
