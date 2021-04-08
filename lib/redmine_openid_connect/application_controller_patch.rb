@@ -4,6 +4,7 @@ module RedmineOpenidConnect
       return super unless OicSession.enabled?
 
       if !User.current.logged?
+        reset_session
         if request.get?
           url = request.original_url
         else
