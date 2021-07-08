@@ -2,7 +2,7 @@ module RedmineOpenidConnect
   module AccountControllerPatch
 
     def login
-      if OicSession.disabled? || params[:local_login].present? || request.post?
+      if OicSession.disabled? || OicSession.login_selector? || params[:local_login].present? || request.post?
         return super
       end
 
@@ -91,6 +91,15 @@ module RedmineOpenidConnect
         user = User.find_by_login(user_info["email"])
 
         if user.nil?
+          if !OicSession.create_user_if_not_exists?
+            flash.now[:warning] ||= l(:oic_cannot_create_user, user_info["email"])
+            
+            logger.warn "Could not create user #{user_info["email"]}, the system is not allowed to create new users through openid"
+            flash.now[:warning] += "The system is not allowed to create new users through openid"
+
+            return invalid_credentials
+          end
+
           user = User.new
 
           user.login = user_info["user_name"] || user_info["nickname"] || user_info["preferred_username"] || user_info["email"]
@@ -123,9 +132,9 @@ module RedmineOpenidConnect
             # after user creation just show "My Page" don't redirect to remember
             successful_authentication(user)
           else
-            flash.now[:warning] ||= "Ne peut créer l'utilisateur #{user.login}: "
+            flash.now[:warning] ||= l(:oic_cannot_create_user, user.login)
             user.errors.full_messages.each do |error|
-              logger.warn "Ne peut créer l'utilisateur #{user.login}, erreur #{error}"
+              logger.warn "Could not create user #{user.login}, error was #{error}"
               flash.now[:warning] += "#{error}. "
             end
             return invalid_credentials
@@ -144,11 +153,21 @@ module RedmineOpenidConnect
       end
     end
 
+    def password_authentication
+      user = User.find_by_login(params[:username])
+      if OicSession.enabled? and !user.nil? and !user.auth_source.nil? and OicSession.disallowed_auth_sources_login.map(&:to_i).include? user.auth_source.id
+        flash.now[:warning] ||= l(:oic_cannot_login_user, params[:username])
+        logger.warn "User #{params[:username]} cannot login because it was disallowed by the openid plugin configuration"
+      else
+        return super
+      end
+    end
+
     def invalid_credentials
       return super unless OicSession.enabled?
 
-      logger.warn "Échec de connexion pour '#{params[:username]}' depuis #{request.remote_ip} à #{Time.now.utc}"
-      flash.now[:error] = (l(:notice_account_invalid_creditentials) + ". " + "<a href='#{signout_path}'>Essayez avec un autre identifiant</a>").html_safe
+      logger.warn "Failed login attempt for '#{params[:username]}' from #{request.remote_ip} at #{Time.now.utc}"
+      flash.now[:error] = (l(:notice_account_invalid_credentials) + " " + l(:oic_try_another_account, signout_path)).html_safe
     end
 
     def rpiframe
